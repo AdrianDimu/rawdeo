@@ -1,8 +1,9 @@
 mod terminal;
+mod input;
 
-use std::io::{self, Read, Write};
 use ctrlc;
 use terminal::{enable_raw_mode, disable_raw_mode};
+use input::{read_key, handle_keypress, Key};
 
 fn main() {
     enable_raw_mode().expect("Failed to enable raw mode");
@@ -15,19 +16,12 @@ fn main() {
 
     println!("Raw mode enabled! Press 'q' to exit.");
 
-    let mut buffer = [0; 1];
-    let stdin = io::stdin();
-
     loop {
-        stdin.lock().read_exact(&mut buffer).unwrap();
-        let key = buffer[0];
-
-        if key == b'q' {
+        let key = read_key();
+        if let Key::Quit = key {
             break;
         }
-
-        print!("You pressed: {}\r\n", key as char);
-        io::stdout().flush().unwrap();
+        handle_keypress(key);
     }
 
     disable_raw_mode();
