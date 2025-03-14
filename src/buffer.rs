@@ -89,9 +89,18 @@ impl TextBuffer {
     pub fn render(&mut self) {
         print!("\x1b[?25l");
 
+        let new_max_digits = self.lines.len().to_string().len();
+        let old_max_digits = self.render_cache.len().to_string().len();
+
+        if new_max_digits != old_max_digits {
+            print!("\x1b[2J\x1b[H");
+        }
+
         for (i, line) in self.lines.iter().enumerate() {
-            if i >= self.render_cache.len() || self.render_cache[i] != *line {
-                print!("\x1b[{};1H\x1b[K{}", i + 1, line);
+            if i >= self.render_cache.len() || self.render_cache[i] != *line || new_max_digits != old_max_digits {
+                print!("\x1b[{};1H\x1b[K", i + 1);
+
+                print!("{:>width$} | {}", i + 1, line, width = new_max_digits);
             }
         }
 
@@ -103,7 +112,8 @@ impl TextBuffer {
 
         self.render_cache = self.lines.clone();
 
-        print!("\x1b[{};{}H", self.cursor_y + 1, self.cursor_x + 1);
+        let cursor_offset = new_max_digits + 3;
+        print!("\x1b[{};{}H", self.cursor_y + 1, self.cursor_x + cursor_offset + 1);
         print!("\x1b[?25h");
 
         io::stdout().flush().unwrap();
