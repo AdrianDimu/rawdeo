@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use crate::input::Key;
 
 pub struct TextBuffer {
     pub lines: Vec<String>,
@@ -47,6 +48,40 @@ impl TextBuffer {
         self.cursor_y += 1;
         self.cursor_x = 0;
         self.lines.insert(self.cursor_y, current_line);
+    }
+
+    pub fn move_cursor(&mut self, direction: Key) {
+        match direction {
+            Key::ArrowLeft => {
+                if self.cursor_x > 0 {
+                    self.cursor_x -= 1;
+                } else if self.cursor_y > 0 {
+                    self.cursor_y -= 1;
+                    self.cursor_x = self.lines[self.cursor_y].len();
+                }
+            }
+            Key::ArrowRight => {
+                if self.cursor_x < self.lines[self.cursor_y].len() {
+                    self.cursor_x += 1;
+                } else if self.cursor_y < self.lines.len() - 1 {
+                    self.cursor_y += 1;
+                    self.cursor_x = 0;
+                }
+            }
+            Key::ArrowUp => {
+                if self.cursor_y > 0 {
+                    self.cursor_y -= 1;
+                    self.cursor_x = self.cursor_x.min(self.lines[self.cursor_y].len());
+                }
+            }
+            Key::ArrowDown => {
+                if self.cursor_y < self.lines.len() - 1 {
+                    self.cursor_y += 1;
+                    self.cursor_x = self.cursor_x.min(self.lines[self.cursor_y].len());
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn render(&self) {

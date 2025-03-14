@@ -28,6 +28,7 @@ fn main() {
             Key::Tab => buffer.insert_char('\t'),
             Key::Enter => buffer.insert_new_line(),
             Key::Backspace => buffer.delete_char(),
+            Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown => buffer.move_cursor(key), 
             _ => {}
         }
     }
