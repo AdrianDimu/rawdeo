@@ -16,6 +16,8 @@ fn main() {
         std::process::exit(0);
     }).expect("Error setting Ctrl-C handler");
 
+    print!("\x1b[2J\x1b[H");
+
     let mut buffer = TextBuffer::new();
     println!("Raw mode enabled! Start typing... (Ctrl+C to exit)");
 

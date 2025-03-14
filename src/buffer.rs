@@ -5,6 +5,7 @@ pub struct TextBuffer {
     pub lines: Vec<String>,
     pub cursor_x: usize,
     pub cursor_y: usize,
+    render_cache: Vec<String>,
 }
 
 impl TextBuffer {
@@ -13,6 +14,7 @@ impl TextBuffer {
             lines: vec![String::new()],
             cursor_x: 0,
             cursor_y: 0,
+            render_cache: vec![String::new()],
         }
     }
 
@@ -84,12 +86,26 @@ impl TextBuffer {
         }
     }
 
-    pub fn render(&self) {
-        print!("\x1b[2J\x1b[H");
-        for line in &self.lines {
-            println!("{}", line);
+    pub fn render(&mut self) {
+        print!("\x1b[?25l");
+
+        for (i, line) in self.lines.iter().enumerate() {
+            if i >= self.render_cache.len() || self.render_cache[i] != *line {
+                print!("\x1b[{};1H\x1b[K{}", i + 1, line);
+            }
         }
+
+        if self.lines.len() < self.render_cache.len() {
+            for i in self.lines.len()..self.render_cache.len() {
+                print!("\x1b[{};1H\x1b[K", i + 1);
+            }
+        }
+
+        self.render_cache = self.lines.clone();
+
         print!("\x1b[{};{}H", self.cursor_y + 1, self.cursor_x + 1);
+        print!("\x1b[?25h");
+
         io::stdout().flush().unwrap();
     }
 }
