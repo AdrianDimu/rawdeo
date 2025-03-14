@@ -2,14 +2,15 @@ use std::io::{self, Read, Write};
 
 pub enum Key {
     Char(char),
+    Tab,
+    Escape,
+    Space,
+    Enter,
+    Backspace,
     ArrowUp,
     ArrowDown,
     ArrowLeft,
     ArrowRight,
-    Enter,
-    Backspace,
-    Escape,
-    Quit,
     Unknown,
 }
 
@@ -22,8 +23,11 @@ pub fn read_key() -> Key {
     }
 
     match buffer[0] {
-        b'q' => Key::Quit,
-        b'\x1b' => { // Escape key detected
+        b'\t' => Key::Tab,
+        b' ' => Key::Space,
+        b'\n' => Key::Enter,
+        b'\x7f' => Key::Backspace,
+        b'\x1b' => { 
             let mut seq = [0; 2];
             if stdin.lock().read_exact(&mut seq).is_ok() {
                 match seq {
@@ -37,9 +41,8 @@ pub fn read_key() -> Key {
                 Key::Escape
             }
         }
-        b'\r' => Key::Enter,
-        b'\x7f' => Key::Backspace,
-        _ => Key::Char(buffer[0] as char),
+        32..=126 => Key::Char(buffer[0] as char),
+        _=> Key::Unknown,
     }
 }
 
@@ -51,7 +54,9 @@ pub fn handle_keypress(key: Key) {
         Key::ArrowLeft => println!("Arrow Left"),
         Key::Enter => println!("Enter"),
         Key::Backspace => println!("Backspace"),
-        Key::Quit => println!("Quitting..."),
+        Key::Tab => println!("Tab"),
+        Key::Escape => println!("Escape"),
+        Key::Space => println!("Space"),
         Key::Char(c) => print!("You pressed: {}\r\n", c),
         _ => {}
     }
