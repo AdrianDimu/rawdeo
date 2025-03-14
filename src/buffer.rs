@@ -7,7 +7,15 @@ pub struct TextBuffer {
     pub cursor_y: usize,
     pub scroll_y: usize,
     pub screen_height: usize,
+    pub mode: Mode,
+    pub command_input: String,
     render_cache: Vec<String>,
+}
+
+pub enum Mode {
+    Normal,
+    Insert,
+    Command,
 }
 
 impl TextBuffer {
@@ -17,7 +25,9 @@ impl TextBuffer {
             cursor_x: 0,
             cursor_y: 0,
             scroll_y: 0,
-            screen_height,
+            screen_height: screen_height -2,
+            mode: Mode::Normal,
+            command_input: String::new(),
             render_cache: vec![String::new()],
         }
     }
@@ -51,6 +61,12 @@ impl TextBuffer {
                 self.scroll_y = self.cursor_y;
             }
         } 
+
+        self.cursor_x = self.cursor_x.min(self.lines[self.cursor_y].len());
+
+        if self.cursor_y == 0 {
+            self.scroll_y = 0;
+        }
     }
 
     pub fn insert_new_line(&mut self) {
@@ -114,32 +130,35 @@ impl TextBuffer {
             print!("\x1b[2J\x1b[H");
         }
 
+        let mode_display = match self.mode {
+            Mode::Normal => "-- NORMAL --",
+            Mode::Insert => "-- INSERT --",
+            Mode::Command => "-- COMMAND --",
+        };
+        print!("\x1b[1;1H\x1b[K{}", mode_display);
+
+        print!("\x1b[2;1H\x1b[K:{}", self.command_input);
+
+        let mut last_rendered_line = 0;
         for (i, line_index) in (self.scroll_y..self.scroll_y + self.screen_height)
             .enumerate()
             .take(self.lines.len() - self.scroll_y) 
         {
             let line = &self.lines[line_index];
 
-            print!("\x1b[{};1H\x1b[K{:>width$} | {}", i + 1, line_index + 1, line, width = new_max_digits);
+            print!("\x1b[{};1H\x1b[K{:>width$} | {}", i + 3, line_index + 1, line, width = new_max_digits);
+            last_rendered_line = i + 3;
            
         }
 
-        if self.lines.len() < self.render_cache.len() {
-            for i in self.lines.len()..self.render_cache.len() {
-                print!("\x1b[{};1H\x1b[K", i + 1);
-            }
-        }
-
-        if self.lines.len() < self.render_cache.len() {
-            for i in self.lines.len()..self.render_cache.len() {
-                print!("\x1b[{};1H\x1b[K", i + 1);
-            }
+        for i in last_rendered_line + 1..self.screen_height + 3 {
+            print!("\x1b[{};1H\x1b[K", i);
         }
 
         self.render_cache = self.lines.clone();
 
         let cursor_offset = new_max_digits + 3;
-        let cursor_screen_y = self.cursor_y - self.scroll_y;
+        let cursor_screen_y = self.cursor_y.saturating_sub(self.scroll_y) + 2;
         print!("\x1b[{};{}H", cursor_screen_y + 1, self.cursor_x + cursor_offset + 1);
         print!("\x1b[?25h");
 
