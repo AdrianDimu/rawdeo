@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 
 pub enum Key {
     Char(char),
@@ -46,19 +46,19 @@ pub fn read_key() -> Key {
     }
 }
 
-pub fn handle_keypress(key: Key) {
-    match key {
-        Key::ArrowUp => println!("Arrow Up"),
-        Key::ArrowDown => println!("Arrow Down"),
-        Key::ArrowRight => println!("Arrow Right"),
-        Key::ArrowLeft => println!("Arrow Left"),
-        Key::Enter => println!("Enter"),
-        Key::Backspace => println!("Backspace"),
-        Key::Tab => println!("Tab"),
-        Key::Escape => println!("Escape"),
-        Key::Space => println!("Space"),
-        Key::Char(c) => print!("You pressed: {}\r\n", c),
-        _ => {}
-    }
-    io::stdout().flush().unwrap();
-}
+// pub fn handle_keypress(key: Key) {
+//     match key {
+//         Key::ArrowUp => println!("Arrow Up"),
+//         Key::ArrowDown => println!("Arrow Down"),
+//         Key::ArrowRight => println!("Arrow Right"),
+//         Key::ArrowLeft => println!("Arrow Left"),
+//         Key::Enter => println!("Enter"),
+//         Key::Backspace => println!("Backspace"),
+//         Key::Tab => println!("Tab"),
+//         Key::Escape => println!("Escape"),
+//         Key::Space => println!("Space"),
+//         Key::Char(c) => print!("You pressed: {}\r\n", c),
+//         _ => {}
+//     }
+//     io::stdout().flush().unwrap();
+// }
