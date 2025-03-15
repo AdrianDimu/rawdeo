@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::fs::File;
 use crate::{input::Key, terminal::disable_raw_mode};
 
 pub struct TextBuffer {
@@ -95,11 +96,27 @@ impl TextBuffer {
                 disable_raw_mode();
                 std::process::exit(0);
             }
+            "s" => {
+                if let Err(e) = self.save_to_file("output.txt") {
+                    print!("\x1b[2;1H\x1b[KSave failed: {}", e);
+                } else {
+                    print!("\x1b[2;1H\x1b[KFile saved: output.txt");
+                }
+                io::stdout().flush().unwrap();
+            }
             _ => {}
         }
 
         self.command_input.clear();
         self.mode = Mode::Normal;
+    }
+
+    fn save_to_file(&self, filename: &str) -> io::Result<()> {
+        let mut file = File::create(filename)?;
+        for line in &self.lines {
+            writeln!(file, "{}", line)?;
+        }
+        Ok(())
     }
 
     pub fn insert_char(&mut self, c: char) {
