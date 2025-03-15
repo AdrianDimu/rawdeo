@@ -11,6 +11,7 @@ pub enum Key {
     ArrowDown,
     ArrowLeft,
     ArrowRight,
+    OptionSpace,
     Unknown,
 }
 
@@ -27,38 +28,33 @@ pub fn read_key() -> Key {
         b' ' => Key::Space,
         b'\n' => Key::Enter,
         b'\x7f' => Key::Backspace,
-        b'\x1b' => { 
-            let mut seq = [0; 2];
-            if stdin.lock().read_exact(&mut seq).is_ok() {
-                match seq {
-                    [b'[', b'A'] => Key::ArrowUp,
-                    [b'[', b'B'] => Key::ArrowDown,
-                    [b'[', b'C'] => Key::ArrowRight,
-                    [b'[', b'D'] => Key::ArrowLeft,
-                    _ => Key::Escape,
+        b'\x1b' => {
+            let mut seq = [0, 2];
+            if stdin.lock().read_exact(&mut seq[0..1]).is_ok() {
+                if seq[0] == b'[' {
+                    if stdin.lock().read_exact(&mut seq[1..2]).is_ok() {
+                        return match seq {
+                            [b'[', b'A'] => Key::ArrowUp,
+                            [b'[', b'B'] => Key::ArrowDown,
+                            [b'[', b'C'] => Key::ArrowRight,
+                            [b'[', b'D'] => Key::ArrowLeft,
+                            _ => Key::Escape,
+                        }; 
+                    }
                 }
+                Key::Escape
             } else {
                 Key::Escape
             }
+        }
+        b'\xC2' => {
+            let mut seq = [0; 1];
+            if stdin.lock().read_exact(&mut seq).is_ok() && seq[0] == b'\xA0' {
+               return Key::OptionSpace
+            }
+            Key::Unknown
         }
         32..=126 => Key::Char(buffer[0] as char),
         _=> Key::Unknown,
     }
 }
-
-// pub fn handle_keypress(key: Key) {
-//     match key {
-//         Key::ArrowUp => println!("Arrow Up"),
-//         Key::ArrowDown => println!("Arrow Down"),
-//         Key::ArrowRight => println!("Arrow Right"),
-//         Key::ArrowLeft => println!("Arrow Left"),
-//         Key::Enter => println!("Enter"),
-//         Key::Backspace => println!("Backspace"),
-//         Key::Tab => println!("Tab"),
-//         Key::Escape => println!("Escape"),
-//         Key::Space => println!("Space"),
-//         Key::Char(c) => print!("You pressed: {}\r\n", c),
-//         _ => {}
-//     }
-//     io::stdout().flush().unwrap();
-// }

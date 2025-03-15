@@ -5,7 +5,7 @@ mod buffer;
 use ctrlc;
 use terminal::{enable_raw_mode, disable_raw_mode};
 use terminal_size::{Height, Width, terminal_size};
-use input::{read_key, Key};
+use input::read_key;
 use buffer::TextBuffer;
 
 fn main() {
@@ -20,7 +20,6 @@ fn main() {
     print!("\x1b[2J\x1b[H");
 
     let (_, Height(h)) = terminal_size().unwrap_or((Width(80), Height(24)));
-    
     let mut buffer = TextBuffer::new(h as usize -2);
 
     println!("Raw mode enabled! Start typing... (Ctrl+C to exit)");
@@ -28,14 +27,6 @@ fn main() {
     loop {
         buffer.render();
         let key = read_key();
-        match key {
-            Key::Char(c) => buffer.insert_char(c),
-            Key::Space => buffer.insert_char(' '),
-            Key::Tab => buffer.insert_char('\t'),
-            Key::Enter => buffer.insert_new_line(),
-            Key::Backspace => buffer.delete_char(),
-            Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown => buffer.move_cursor(key), 
-            _ => {}
-        }
+        buffer.handle_keypress(key);
     }
 }

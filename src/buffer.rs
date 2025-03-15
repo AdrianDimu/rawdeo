@@ -32,6 +32,66 @@ impl TextBuffer {
         }
     }
 
+    pub fn handle_keypress(&mut self, key: Key) {
+        match self.mode {
+            Mode::Insert => self.handle_insert_mode(key),
+            Mode::Normal => self.handle_normal_mode(key),
+            Mode::Command => self.handle_command_mode(key),
+        }
+    }
+
+    fn handle_insert_mode(&mut self, key: Key) {
+        match key {
+            Key::Char(c) => self.insert_char(c),
+            Key::Space => self.insert_char(' '),
+            Key::Tab => self.insert_char('\t'),
+            Key::Enter => self.insert_new_line(),
+            Key::Backspace => self.delete_char(),
+            Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown => self.move_cursor(key),
+            Key::OptionSpace => self.mode = Mode::Normal,
+            _ => {}
+        }
+    }
+
+    fn handle_normal_mode(&mut self, key: Key) {
+        match key {
+            Key::Char('i') => self.mode = Mode::Insert,
+            Key::Char(':') => {
+                self.mode = Mode::Command;
+                self.command_input.clear();
+            }
+            Key::OptionSpace => self.mode = Mode::Insert,
+            Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown => self.move_cursor(key),
+            Key::Space => self.insert_char(' '),
+            Key::Tab => self.insert_char('\t'),
+            Key::Enter => self.insert_new_line(),
+            Key::Backspace => self.delete_char(),
+            _ => {}
+        }
+    }
+
+    fn handle_command_mode(&mut self, key: Key) {
+        match key {
+            Key::Char(c) => self.command_input.push(c),
+            Key::Backspace => {
+                self.command_input.pop();
+            }
+            Key::Enter => {
+                self.execute_command();
+            }
+            Key::OptionSpace => self.mode = Mode::Normal,
+            _ => {}
+        }
+    }
+
+    fn execute_command(&mut self) {
+        print!("\x1b[2;1H\x1b[K");
+        println!("executed: {}", self.command_input);
+        io::stdout().flush().unwrap();
+
+        self.mode = Mode::Normal;
+    }
+
     pub fn insert_char(&mut self, c: char) {
         if c == '\t' {
             for _ in 0..4 {
