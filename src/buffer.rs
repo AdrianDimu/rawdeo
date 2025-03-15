@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use crate::input::Key;
+use crate::{input::Key, terminal::disable_raw_mode};
 
 pub struct TextBuffer {
     pub lines: Vec<String>,
@@ -89,6 +89,16 @@ impl TextBuffer {
         println!("executed: {}", self.command_input);
         io::stdout().flush().unwrap();
 
+        match self.command_input.as_str() {
+            "q!" => {
+                print!("\x1b[2J\x1b[H");
+                disable_raw_mode();
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+
+        self.command_input.clear();
         self.mode = Mode::Normal;
     }
 
