@@ -59,18 +59,46 @@ impl Rope {
     }
 
     pub fn insert(&mut self, index: usize, text: &str) {
-        match &mut self.root {
+        match &mut self.root.take() {
             Some(RopeNode::Leaf(existing_text)) => {
-                if index > existing_text.len() {
-                    panic!("Index out of bounds");
-                }
-
                 let new_text = format!(
                     "{}{}{}",
                     &existing_text[..index], text, &existing_text[index..]
                 );
 
-                self.root = Some(RopeNode::Leaf(new_text));
+                match self.split_strategy {
+                    SplitStrategy::LineBased => {
+                        if let Some(pos) = new_text[..index].rfind('\n') {
+                            let (left_part, right_part) = new_text.split_at(pos + 1);
+
+                            self.root = Some(RopeNode::Internal {
+                                left: Rc::new(RefCell::new(Rope::from_string(left_part, self.split_strategy))),
+                                right: Rc::new(RefCell::new(Rope::from_string(right_part, self.split_strategy))),
+                                left_size: left_part.len(),
+                            });
+                        } else {
+                            self.root = Some(RopeNode::Leaf(new_text));
+                        }
+                    }
+                    SplitStrategy::FixedSize(max_size) => {
+                        if new_text.len() > max_size {
+                            let split_index = match new_text[..max_size].rfind(' ') {
+                                Some(pos) => pos +1,
+                                None => max_size,
+                            };
+
+                            let (left_part, right_part) = new_text.split_at(split_index);
+
+                            self.root = Some(RopeNode::Internal {
+                                left: Rc::new(RefCell::new(Rope::from_string(left_part, self.split_strategy))),
+                                right: Rc::new(RefCell::new(Rope::from_string(right_part, self.split_strategy))),
+                                left_size: left_part.len(),
+                            });
+                        } else {
+                            self.root = Some(RopeNode::Leaf(new_text));
+                        }
+                    }
+                }
             }
             Some(RopeNode::Internal {left, right, left_size }) => {
                 if index < *left_size {
@@ -78,6 +106,11 @@ impl Rope {
                 } else {
                     right.borrow_mut().insert(index - *left_size, text);
                 }
+                self.root = Some(RopeNode::Internal { 
+                    left: left.clone(), 
+                    right: right.clone(), 
+                    left_size: *left_size,
+                });
             }
             None => {
                 self.root = Some(RopeNode::Leaf(text.to_string()));
