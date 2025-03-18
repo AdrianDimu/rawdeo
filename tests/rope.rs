@@ -56,4 +56,67 @@ mod tests {
         let expected_output = "Internal (left_size = 7):\n  Leaf: \"Hello, \"\n  Leaf: \"world!\"\n";
         assert_eq!(rope1.debug_string(), expected_output);
     }
+
+
+    #[test]
+    fn test_insert_and_delete_inside_leaf() {
+        let mut rope = Rope::from_string("Hello world!", SplitStrategy::LineBased);
+        rope.insert(6, "amazing ");
+        rope.delete(6, 14); // Remove "amazing "
+
+        let expected_output = "Leaf: \"Hello world!\"\n";
+        assert_eq!(rope.debug_string(), expected_output);
+    }
+
+    #[test]
+    fn test_insert_creates_new_leaves() {
+        let mut rope = Rope::from_string("Hello world!", SplitStrategy::LineBased);
+        rope.insert(6, "\nThis is Rust!\n");
+
+        let expected_output = "Internal (left_size = 7):\n  Leaf: \"Hello \"\n  Leaf: \"\nThis is Rust!\nworld!\"\n";
+        assert_eq!(rope.debug_string(), expected_output);
+    }
+
+    #[test]
+    fn test_insert_and_delete_entire_leaf() {
+        let mut rope = Rope::from_string("Hello\nRust!\nWorld!", SplitStrategy::LineBased);
+        rope.insert(6, "\nAmazing ");
+        rope.delete(6, 15); // Remove "Amazing "
+
+        let expected_output = "Internal (left_size = 6):\n  Leaf: \"Hello\n\"\n  Leaf: \"Rust!\nWorld!\"\n";
+        assert_eq!(rope.debug_string(), expected_output);
+    }
+
+    #[test]
+    fn test_insert_fixed_size_splitting() {
+        let mut rope = Rope::from_string("Hello world!", SplitStrategy::FixedSize(10));
+        rope.insert(6, " amazing"); // Causes split due to max 10 chars
+
+        let expected_output = "Internal (left_size = 10):\n  Leaf: \"Hello \"\n  Leaf: \"amazing world!\"\n";
+        assert_eq!(rope.debug_string(), expected_output);
+    }
+
+    #[test]
+    fn test_delete_across_internal_nodes() {
+        let mut rope = Rope::from_string("Hello\nRust!\nWorld!", SplitStrategy::LineBased);
+        rope.insert(6, "\nNew Line!");
+        rope.delete(6, 16); // Remove the newly inserted "New Line!"
+
+        let expected_output = "Internal (left_size = 6):\n  Leaf: \"Hello\n\"\n  Leaf: \"Rust!\nWorld!\"\n";
+        assert_eq!(rope.debug_string(), expected_output);
+    }
+
+    #[test]
+    fn test_insert_delete_mixed_operations() {
+        let mut rope = Rope::from_string("Hello, world!", SplitStrategy::LineBased);
+        rope.insert(5, " wonderful");
+        rope.insert(13, "\nNew Line!\n");
+        rope.delete(5, 16); // Delete " wonderful"
+        rope.insert(0, "Start: ");
+        rope.delete(0, 7); // Delete "Start: "
+
+        let expected_output = "Internal (left_size = 13):\n  Leaf: \"Hello, world!\"\n  Leaf: \"\nNew Line!\n\"\n";
+        assert_eq!(rope.debug_string(), expected_output);
+    }
+
 }

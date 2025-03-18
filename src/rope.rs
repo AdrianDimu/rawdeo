@@ -59,7 +59,7 @@ impl Rope {
     }
 
     pub fn insert(&mut self, index: usize, text: &str) {
-        match &mut self.root.take() {
+        match self.root.take() {
             Some(RopeNode::Leaf(existing_text)) => {
                 let new_text = format!(
                     "{}{}{}",
@@ -101,15 +101,16 @@ impl Rope {
                 }
             }
             Some(RopeNode::Internal {left, right, left_size }) => {
-                if index < *left_size {
+                if index < left_size {
                     left.borrow_mut().insert(index, text);
                 } else {
-                    right.borrow_mut().insert(index - *left_size, text);
+                    right.borrow_mut().insert(index - left_size, text);
                 }
+
                 self.root = Some(RopeNode::Internal { 
                     left: left.clone(), 
                     right: right.clone(), 
-                    left_size: *left_size,
+                    left_size: left_size,
                 });
             }
             None => {
@@ -119,9 +120,13 @@ impl Rope {
     }
 
     pub fn delete(&mut self, start: usize, end: usize) {
-        match &mut self.root {
+        if start >= end {
+            return;
+        }
+
+        match self.root.take() {
             Some(RopeNode::Leaf(existing_text)) => {
-                if start >= existing_text.len() || end > existing_text.len() || start > end {
+                if start >= existing_text.len() || end > existing_text.len() {
                     panic!("Invalid delete range")
                 }
 
@@ -131,17 +136,67 @@ impl Rope {
                     &existing_text[end..]
                 );
 
-                self.root = Some(RopeNode::Leaf(new_text));
+                if new_text.is_empty() {
+                    self.root = None;
+                    return;
+                }
+
+                match self.split_strategy {
+                    SplitStrategy::LineBased => {
+                        if new_text.contains('\n') {
+                            let (left_part, right_part) = self.split_leaf(&new_text, new_text.len() / 2);
+                            self.root = Some(RopeNode::Internal {
+                                left: Rc::new(RefCell::new(Rope::from_string(&left_part, self.split_strategy))),
+                                right: Rc::new(RefCell::new(Rope::from_string(&right_part, self.split_strategy))),
+                                left_size: left_part.len(),
+                            });
+                        } else {
+                            self.root = Some(RopeNode::Leaf(new_text));
+                        }
+                    }
+                    SplitStrategy::FixedSize(max_size) => {
+                        if new_text.len() > max_size {
+                            let split_index = match new_text[..max_size].rfind(' ') {
+                                Some(pos) => pos + 1, // Split at nearest space
+                                None => max_size, // Hard split at max_size if no space is found
+                            };
+
+                            let (left_part, right_part) = new_text.split_at(split_index);
+
+                            self.root = Some(RopeNode::Internal {
+                                left: Rc::new(RefCell::new(Rope::from_string(left_part, self.split_strategy))),
+                                right: Rc::new(RefCell::new(Rope::from_string(right_part, self.split_strategy))),
+                                left_size: left_part.len(),
+                            });
+                        } else {
+                            self.root = Some(RopeNode::Leaf(new_text));
+                        }
+                    }    
+                }
             }
             Some(RopeNode::Internal { left, right, left_size }) => {
-                if end < *left_size {
+                if end < left_size {
                     left.borrow_mut().delete(start, end);
-                } else if start >= *left_size {
-                    right.borrow_mut().delete(start - *left_size, end - *left_size);
+                } else if start >= left_size {
+                    right.borrow_mut().delete(start - left_size, end - left_size);
                 } else {
-                    left.borrow_mut().delete(start, *left_size);
-                    right.borrow_mut().delete(0, end - *left_size);
+                    left.borrow_mut().delete(start, left_size);
+                    right.borrow_mut().delete(0, end - left_size);
                 }
+
+                let left_empty = left.borrow().root.is_none();
+                let right_empty =  right.borrow().root.is_none();
+
+                self.root = match (left_empty, right_empty) {
+                    (true, true) => None,
+                    (true, false) => Some(right.borrow().root.clone().unwrap()),
+                    (false, true) => Some(left.borrow().root.clone().unwrap()),
+                    (false, false) => Some(RopeNode::Internal {
+                        left: left.clone(), 
+                        right: right.clone(), 
+                        left_size,
+                    }),
+                };
             }
             None => {}
         }
@@ -193,13 +248,21 @@ impl Rope {
         }
     }
 
-    fn split_leaf(&self, text: &str, index: usize) -> (String, String) {
+    pub fn split_leaf(&self, text: &str, index: usize) -> (String, String) {
+        if index >= text.len() {
+            return (text.to_string(), "".to_string());
+        }
+
         match self.split_strategy {
             SplitStrategy::LineBased => {
                 let split_index = match text[..index].rfind('\n') {
-                    Some(pos) => pos +1,
+                    Some(pos) => pos + 1,
                     None => index,
                 };
+
+                if split_index == 0 || split_index >= text.len() {
+                    return (text.to_string(), "".to_string());
+                }
 
                 (
                     text[..split_index].to_string(),
@@ -207,14 +270,18 @@ impl Rope {
                 )
             }
             SplitStrategy::FixedSize(max_size) => {
-                let split_index = if index > max_size {
-                    match text[..max_size].rfind(' ') {
-                        Some(pos) => pos +1,
-                        None => max_size,
-                    }
-                } else {
-                    index
+                if text.len() <= max_size {
+                    return (text.to_string(), "".to_string());
+                }
+
+                let split_index = match text[..max_size].rfind(' ') {
+                    Some(pos) => pos + 1,
+                    None => max_size,
                 };
+
+                if split_index == 0 || split_index >= text.len() {
+                    return (text.to_string(), "".to_string()); 
+                }
 
                 (
                     text[..split_index].to_string(),
