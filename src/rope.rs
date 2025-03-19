@@ -17,23 +17,29 @@ impl RopeNode {
     fn char_size(&self) -> usize {
         match self {
             RopeNode::Leaf { text } => text.len(),
-            RopeNode::Internal { left, right, left_size } => {
+            RopeNode::Internal { left: _, right, left_size } => {
                 left_size + right.borrow().char_size()
             }
         }
     }
 
+    // Count actual newlines in the text, regardless of how the rope is structured
     fn lines(&self) -> usize {
         match self {
-            RopeNode::Leaf { .. } => 1,
+            RopeNode::Leaf { text } => {
+                // Count newlines in the text, adding 1 for the final line
+                text.chars().filter(|&c| c == '\n').count() + 1
+            }
             RopeNode::Internal { left, right, .. } => {
-                left.borrow().lines() + right.borrow().lines()
+                // For internal nodes, combine the line counts from both children
+                // Subtract 1 from the right count to avoid double-counting the line break
+                left.borrow().lines() + right.borrow().lines() - 1
             }
         }
     }
 
     fn print_structure(&self, depth: usize) {
-        let indent = "  ".repeat(depth); // Indentation based on depth
+        let indent = "-".repeat(depth);
         match self {
             RopeNode::Leaf { text } => {
                 println!("{}Leaf: {:?}", indent, text);
