@@ -704,3 +704,13 @@ impl Rope {
         self.undo_stack.can_undo()
     }
 }
+
+impl std::fmt::Display for Rope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(root) = &self.root {
+            write!(f, "{}", root.borrow().text())
+        } else {
+            write!(f, "")
+        }
+    }
+}
