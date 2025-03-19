@@ -531,4 +531,145 @@ mod tests {
         assert_eq!(rope.char_size(), 0);
         assert_eq!(rope.lines(), 1);
     }
+
+    #[test]
+    /// Tests undo with empty operations.
+    /// Verifies that:
+    /// - Undo after inserting empty string has no effect
+    /// - Undo after removing empty range has no effect
+    fn test_undo_empty_operations() {
+        let mut rope = Rope::new("Hello");
+        let original_size = rope.char_size();
+        
+        // Test empty insert
+        rope.insert(2, "");
+        assert_eq!(rope.char_size(), original_size);
+        rope.undo();
+        assert_eq!(rope.char_size(), original_size);
+        
+        // Test empty remove
+        rope.remove(2, 2);
+        assert_eq!(rope.char_size(), original_size);
+        rope.undo();
+        assert_eq!(rope.char_size(), original_size);
+    }
+
+    #[test]
+    /// Tests undo with boundary conditions.
+    /// Verifies that:
+    /// - Undo works correctly at start of text
+    /// - Undo works correctly at end of text
+    fn test_undo_boundaries() {
+        let mut rope = Rope::new("Hello");
+        
+        // Test start boundary
+        rope.insert(0, "Start ");
+        assert_eq!(rope.char_size(), 11);
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+        
+        // Test end boundary
+        rope.insert(5, " End");
+        assert_eq!(rope.char_size(), 9);
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+        
+        // Test removing from start
+        rope.remove(0, 2);
+        assert_eq!(rope.char_size(), 3);
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+        
+        // Test removing from end
+        rope.remove(3, 5);
+        assert_eq!(rope.char_size(), 3);
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+    }
+
+    #[test]
+    /// Tests undo with special characters.
+    /// Verifies that:
+    /// - Undo works with Unicode characters
+    /// - Undo works with control characters
+    fn test_undo_special_chars() {
+        let mut rope = Rope::new("Hello");
+        
+        // Test Unicode characters
+        rope.insert(5, " 🌍");
+        assert_eq!(rope.char_size(), 7);  // "Hello 🌍" -> 7 chars (5 + space + emoji)
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+        
+        // Test control characters
+        rope.insert(5, "\t\n\r");
+        assert_eq!(rope.char_size(), 8);  // "Hello\t\n\r" -> 8 chars
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+        
+        // Test mixed special characters
+        rope.insert(5, "🌍\t\n\r");
+        assert_eq!(rope.char_size(), 9);  // "Hello🌍\t\n\r" -> 9 chars (5 + emoji + tab + newline + carriage return)
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+    }
+
+    #[test]
+    /// Tests undo with large operations.
+    /// Verifies that:
+    /// - Undo works with large text insertions
+    /// - Undo works with large text removals
+    fn test_undo_large_operations() {
+        let mut rope = Rope::new("Hello");
+        
+        // Test large insertion
+        let large_text = " World".repeat(1000);
+        rope.insert(5, &large_text);
+        assert_eq!(rope.char_size(), 5 + large_text.len());
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+        
+        // Test large removal
+        rope.insert(5, &large_text);
+        rope.remove(5, 5 + large_text.len());
+        assert_eq!(rope.char_size(), 5);
+        rope.undo();
+        assert_eq!(rope.char_size(), 5 + large_text.len());
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+    }
+
+    #[test]
+    /// Tests undo with mixed operations and newlines.
+    /// Verifies that:
+    /// - Undo works with mixed insert/delete operations
+    /// - Undo works with operations across multiple lines
+    fn test_undo_mixed_operations() {
+        let mut rope = Rope::new("Line 1\nLine 2");
+        
+        // Insert at start of first line
+        rope.insert(0, "Start ");
+        assert_eq!(rope.lines(), 2);
+        
+        // Delete part of first line
+        rope.remove(5, 7);
+        assert_eq!(rope.lines(), 2);
+        
+        // Insert newline
+        rope.insert(4, "\n");
+        assert_eq!(rope.lines(), 3);
+        
+        // Undo newline insertion
+        rope.undo();
+        assert_eq!(rope.lines(), 2);
+        
+        // Undo deletion
+        rope.undo();
+        assert_eq!(rope.lines(), 2);
+        
+        // Undo start insertion
+        rope.undo();
+        assert_eq!(rope.lines(), 2);
+        assert_eq!(rope.char_size(), 13);
+    }
 }

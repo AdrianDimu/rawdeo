@@ -42,7 +42,7 @@ impl RopeNode {
     /// For internal nodes, this is the sum of characters in both subtrees.
     fn char_size(&self) -> usize {
         match self {
-            RopeNode::Leaf { text } => text.len(),
+            RopeNode::Leaf { text } => text.chars().count(),
             RopeNode::Internal { left: _, right, left_size } => {
                 left_size + right.borrow().char_size()
             }
@@ -119,10 +119,19 @@ impl RopeNode {
     fn text_range(&self, start: usize, end: usize) -> String {
         match self {
             RopeNode::Leaf { text } => {
-                if start >= text.len() || end > text.len() || start > end {
+                if start >= text.chars().count() || end > text.chars().count() || start > end {
                     String::new()
                 } else {
-                    text[start..end].to_string()
+                    // Convert byte indices to char indices
+                    let mut char_indices = text.char_indices();
+                    let start_byte = char_indices
+                        .clone()
+                        .nth(start)
+                        .map_or(text.len(), |(i, _)| i);
+                    let end_byte = char_indices
+                        .nth(end - 1)
+                        .map_or(text.len(), |(i, c)| i + c.len_utf8());
+                    text[start_byte..end_byte].to_string()
                 }
             }
             RopeNode::Internal { left, right, left_size } => {
@@ -379,9 +388,13 @@ impl Rope {
                 // If the text contains newlines, we need to split it into lines
                 if text.contains('\n') {
                     let mut combined = String::with_capacity(leaf_text.len() + text.len());
-                    combined.push_str(&leaf_text[..index]);
+                    // Convert character index to byte index for the leaf text
+                    let byte_index = leaf_text.char_indices()
+                        .nth(index)
+                        .map_or(leaf_text.len(), |(i, _)| i);
+                    combined.push_str(&leaf_text[..byte_index]);
                     combined.push_str(text);
-                    combined.push_str(&leaf_text[index..]);
+                    combined.push_str(&leaf_text[byte_index..]);
                     
                     // Split into lines and create a balanced tree
                     let lines = Rope::split_text_into_lines(&combined);
@@ -389,9 +402,13 @@ impl Rope {
                 } else {
                     // If no newlines, just insert the text into the current leaf
                     let mut new_text = String::with_capacity(leaf_text.len() + text.len());
-                    new_text.push_str(&leaf_text[..index]);
+                    // Convert character index to byte index for the leaf text
+                    let byte_index = leaf_text.char_indices()
+                        .nth(index)
+                        .map_or(leaf_text.len(), |(i, _)| i);
+                    new_text.push_str(&leaf_text[..byte_index]);
                     new_text.push_str(text);
-                    new_text.push_str(&leaf_text[index..]);
+                    new_text.push_str(&leaf_text[byte_index..]);
                     Rc::new(RefCell::new(RopeNode::Leaf { text: new_text }))
                 }
             }
