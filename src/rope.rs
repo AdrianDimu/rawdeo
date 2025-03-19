@@ -1,26 +1,44 @@
-// A Rope data structure implementation for efficient text manipulation
-// The Rope is a binary tree where:
-// - Leaf nodes contain actual text segments
-// - Internal nodes maintain the structure and track the size of their left subtree
-// - Newlines are always at the start of each line (except the first line)
+/// A Rope data structure implementation for efficient text manipulation.
+/// 
+/// The Rope is implemented as a binary tree where:
+/// - Leaf nodes contain actual text segments
+/// - Internal nodes maintain metadata about their subtrees
+/// - Each line (except the first) starts with a newline character
+/// - The tree is kept balanced for optimal performance
+/// 
+/// Key features:
+/// - Efficient insert and delete operations: O(log n)
+/// - Line-aware text manipulation
+/// - Memory efficient for large texts
+/// - Automatic tree balancing
 
 use std::rc::Rc;
 use std::cell::RefCell;
 
+/// A node in the Rope data structure.
+/// Can be either an Internal node (with left and right children) or a Leaf node (containing text).
 #[derive(Debug)]
 enum RopeNode {
+    /// Internal node that maintains tree structure and metadata
     Internal {
+        /// Left child node
         left: Rc<RefCell<RopeNode>>,
+        /// Right child node
         right: Rc<RefCell<RopeNode>>,
-        left_size: usize,  // Size of the left subtree in characters
+        /// Number of characters in the left subtree
+        left_size: usize,
     },
+    /// Leaf node containing actual text content
     Leaf {
-        text: String,      // The actual text content
+        /// The text segment stored in this leaf
+        text: String,
     },
 }
 
 impl RopeNode {
-    // Returns the total number of characters in this node and its subtrees
+    /// Returns the total number of characters in this node and its subtrees.
+    /// For leaf nodes, this is the length of the text.
+    /// For internal nodes, this is the sum of characters in both subtrees.
     fn char_size(&self) -> usize {
         match self {
             RopeNode::Leaf { text } => text.len(),
@@ -30,9 +48,9 @@ impl RopeNode {
         }
     }
 
-    // Counts the number of lines in the text by counting newlines
-    // Each newline character represents a line break, 
-    //and we add 1 for the first line that doesn't have a newline at the start
+    /// Counts the number of lines in the text by counting newlines.
+    /// Each newline character represents a line break, and we add 1 for
+    /// the first line that doesn't have a newline at the start.
     fn lines(&self) -> usize {
         match self {
             RopeNode::Leaf { text } => {
@@ -48,7 +66,8 @@ impl RopeNode {
         }
     }
 
-    // Debug helper to print the tree structure
+    /// Debug helper to print the tree structure with indentation
+    /// showing the hierarchy of nodes.
     fn print_structure(&self, depth: usize) {
         let indent = "-".repeat(depth);
         match self {
@@ -63,7 +82,8 @@ impl RopeNode {
         }
     }
 
-    // Counts the number of leaf nodes in the tree
+    /// Counts the total number of leaf nodes in the tree.
+    /// Used for debugging and verifying tree structure.
     fn leaf_count(&self) -> usize {
         match self {
             RopeNode::Leaf { .. } => 1,
@@ -73,6 +93,8 @@ impl RopeNode {
         }
     }
 
+    /// Returns the complete text content of this node and its subtrees.
+    /// For internal nodes, concatenates text from left and right children.
     fn text(&self) -> String {
         match self {
             RopeNode::Leaf { text } => text.clone(),
@@ -85,6 +107,14 @@ impl RopeNode {
         }
     }
 
+    /// Returns a substring of the text content within the specified range.
+    /// 
+    /// # Arguments
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
+    /// 
+    /// # Returns
+    /// The text content within the specified range
     fn text_range(&self, start: usize, end: usize) -> String {
         match self {
             RopeNode::Leaf { text } => {
@@ -110,13 +140,24 @@ impl RopeNode {
     }
 }
 
+/// A Rope data structure for efficient text manipulation.
+/// Maintains text as a balanced tree of text segments for optimal
+/// insert and delete operations.
 #[derive(Debug)]
 pub struct Rope {
+    /// The root node of the rope tree. None represents an empty rope.
     root: Option<Rc<RefCell<RopeNode>>>,
 }
 
 impl Rope {
-    // Helper function to split text into lines with newlines at the start
+    /// Splits input text into lines, creating leaf nodes.
+    /// Each line (except the first) starts with its newline character.
+    /// 
+    /// # Arguments
+    /// * `text` - The input text to split into lines
+    /// 
+    /// # Returns
+    /// A vector of RopeNodes, each containing a line of text
     fn split_text_into_lines(text: &str) -> Vec<Rc<RefCell<RopeNode>>> {
         if text.is_empty() {
             return vec![Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() }))];
@@ -154,7 +195,14 @@ impl Rope {
         lines
     }
 
-    // Helper function to build a balanced tree from a vector of nodes
+    /// Builds a balanced binary tree from a vector of nodes.
+    /// Used when rebuilding parts of the tree after modifications.
+    /// 
+    /// # Arguments
+    /// * `nodes` - Vector of RopeNodes to build into a tree
+    /// 
+    /// # Returns
+    /// The root node of the balanced tree
     fn build_balanced_tree_from_nodes(mut nodes: Vec<Rc<RefCell<RopeNode>>>) -> Rc<RefCell<RopeNode>> {
         // If we have no nodes (empty document), add an empty leaf
         if nodes.is_empty() {
@@ -187,8 +235,14 @@ impl Rope {
         nodes.pop().unwrap_or_else(|| Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() })))
     }
 
-    // Creates a new Rope from a string
-    // The text is split into lines with newlines at the start of each line (except the first)
+    /// Creates a new Rope from input text.
+    /// The text is split into lines and organized into a balanced tree.
+    /// 
+    /// # Arguments
+    /// * `text` - The input text to create the rope from
+    /// 
+    /// # Returns
+    /// A new Rope instance containing the text
     pub fn new(text: &str) -> Self {
         let mut rope = Rope { root: None };
         if !text.is_empty() {
@@ -202,18 +256,32 @@ impl Rope {
         rope
     }
 
-    // Returns the total number of characters in the Rope
+    /// Returns the total number of characters in the Rope.
+    /// 
+    /// # Returns
+    /// The total character count, or 0 for an empty rope
     pub fn char_size(&self) -> usize {
         self.root.as_ref().map_or(0, |root| root.borrow().char_size())
     }
 
-    // Returns the number of lines in the Rope
+    /// Returns the number of lines in the Rope.
+    /// A line is defined as text ending with a newline,
+    /// plus one for the last line if it doesn't end with a newline.
+    /// 
+    /// # Returns
+    /// The total line count, or 0 for an empty rope
     pub fn lines(&self) -> usize {
         self.root.as_ref().map_or(0, |root| root.borrow().lines())
     }
 
-    // Builds a balanced binary tree from a vector of lines
-    // The tree is balanced by splitting the lines at the middle
+    /// Builds a balanced binary tree from a slice of nodes.
+    /// Used during tree rebalancing operations.
+    /// 
+    /// # Arguments
+    /// * `nodes` - Slice of RopeNodes to build into a tree
+    /// 
+    /// # Returns
+    /// The root node of the balanced tree
     fn build_balanced_tree(nodes: &[Rc<RefCell<RopeNode>>]) -> Rc<RefCell<RopeNode>> {
         if nodes.is_empty() {
             return Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() }));
@@ -234,7 +302,13 @@ impl Rope {
         }))
     }
     
-    // Inserts text at the specified character index
+    /// Inserts text at the specified character index.
+    /// If the text contains newlines, the tree is rebuilt to maintain
+    /// the line-based structure.
+    /// 
+    /// # Arguments
+    /// * `index` - The character position to insert at
+    /// * `text` - The text to insert
     pub fn insert(&mut self, index: usize, text: &str) {
         if text.is_empty() {
             return;
@@ -284,8 +358,16 @@ impl Rope {
         }
     }
 
-    // Updates the tree structure after an insertion that involves newlines
-    // This function rebuilds the tree to maintain balance
+    /// Updates the tree structure after an insertion that involves newlines.
+    /// Rebuilds the affected portion of the tree to maintain balance.
+    /// 
+    /// # Arguments
+    /// * `text` - The original text
+    /// * `index` - The insertion point
+    /// * `insert_text` - The text being inserted
+    /// 
+    /// # Returns
+    /// The root node of the updated tree
     fn update_balanced_tree(text: &str, index: usize, insert_text: &str) -> Rc<RefCell<RopeNode>> {
         // Combine the text before and after the insertion point
         let mut combined = String::with_capacity(text.len() + insert_text.len());
@@ -323,8 +405,16 @@ impl Rope {
         Rope::build_balanced_tree_from_nodes(nodes)
     }
 
-    // Recursively inserts text at the specified index
-    // If the insertion involves newlines, the tree is rebalanced
+    /// Recursively inserts text at the specified index.
+    /// Handles both simple insertions and those involving newlines.
+    /// 
+    /// # Arguments
+    /// * `root` - The root node to insert into
+    /// * `index` - The insertion point
+    /// * `text` - The text to insert
+    /// 
+    /// # Returns
+    /// The new root node after insertion
     fn insert_recursive(root: Rc<RefCell<RopeNode>>, index: usize, text: &str) -> Rc<RefCell<RopeNode>> {
         match &*root.borrow() {
             RopeNode::Leaf { text: leaf_text } => {
@@ -367,17 +457,30 @@ impl Rope {
         }
     }
 
-    // Debug helper to print the tree structure
+    /// Debug helper to print the entire tree structure.
+    /// Useful for visualizing the rope's internal organization.
     pub fn print_structure(&self) {
         self.root.as_ref().map(|root| root.borrow().print_structure(0));
     }    
 
-    // Returns the number of leaf nodes in the tree
+    /// Returns the number of leaf nodes in the tree.
+    /// Used for debugging and verifying tree structure.
+    /// 
+    /// # Returns
+    /// The total number of leaf nodes
     pub fn leaf_count(&self) -> usize {
         self.root.as_ref().map_or(0, |root| root.borrow().leaf_count())
     }
 
-    // Helper function to join text from two nodes, handling newlines correctly
+    /// Helper function to join text from two nodes.
+    /// Handles special cases with newlines at the boundary.
+    /// 
+    /// # Arguments
+    /// * `left` - The left text to join
+    /// * `right` - The right text to join
+    /// 
+    /// # Returns
+    /// The combined text with proper newline handling
     fn join_text(left: &str, right: &str) -> String {
         // If either text is empty, return the other one
         if left.is_empty() {
@@ -401,9 +504,13 @@ impl Rope {
         result
     }
 
-    // Removes a range of characters from the text
-    // start: inclusive start index
-    // end: exclusive end index
+    /// Removes a range of characters from the text.
+    /// If the range contains newlines, rebuilds the affected portion
+    /// of the tree.
+    /// 
+    /// # Arguments
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
     pub fn remove(&mut self, start: usize, end: usize) {
         if start >= end {
             return;
@@ -452,8 +559,16 @@ impl Rope {
         }
     }
 
-    // Recursively removes a range of characters from the text
-    // Returns a new tree with the specified range removed
+    /// Recursively removes a range of characters from the text.
+    /// Handles both simple removals and those involving newlines.
+    /// 
+    /// # Arguments
+    /// * `root` - The root node to remove from
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
+    /// 
+    /// # Returns
+    /// The new root node after removal
     fn remove_recursive(root: Rc<RefCell<RopeNode>>, start: usize, end: usize) -> Rc<RefCell<RopeNode>> {
         match &*root.borrow() {
             RopeNode::Leaf { text } => {
@@ -513,6 +628,9 @@ impl Rope {
         }
     }
 
+    /// Rebalances the entire tree by collecting all text and
+    /// rebuilding with optimal balance.
+    /// Called after operations that may unbalance the tree.
     fn rebalance(&mut self) {
         // Collect all text from the rope
         let mut text = String::new();
