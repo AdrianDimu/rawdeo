@@ -14,6 +14,7 @@
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::undo::{UndoStack, UndoAction};
 
 /// A node in the Rope data structure.
 /// Can be either an Internal node (with left and right children) or a Leaf node (containing text).
@@ -147,6 +148,8 @@ impl RopeNode {
 pub struct Rope {
     /// The root node of the rope tree. None represents an empty rope.
     root: Option<Rc<RefCell<RopeNode>>>,
+    /// The undo stack for tracking changes
+    undo_stack: UndoStack,
 }
 
 impl Rope {
@@ -244,7 +247,10 @@ impl Rope {
     /// # Returns
     /// A new Rope instance containing the text
     pub fn new(text: &str) -> Self {
-        let mut rope = Rope { root: None };
+        let mut rope = Rope { 
+            root: None,
+            undo_stack: UndoStack::new(),
+        };
         if !text.is_empty() {
             let nodes = Rope::split_text_into_lines(text);
             rope.root = Some(Rope::build_balanced_tree(&nodes));
@@ -302,14 +308,13 @@ impl Rope {
         }))
     }
     
-    /// Inserts text at the specified character index.
-    /// If the text contains newlines, the tree is rebuilt to maintain
-    /// the line-based structure.
+    /// Inserts text at the specified character index without recording an undo action.
+    /// This is used internally by the undo system.
     /// 
     /// # Arguments
     /// * `index` - The character position to insert at
     /// * `text` - The text to insert
-    pub fn insert(&mut self, index: usize, text: &str) {
+    pub(crate) fn insert_without_undo(&mut self, index: usize, text: &str) {
         if text.is_empty() {
             return;
         }
@@ -348,7 +353,7 @@ impl Rope {
                 current
             }
         } else {
-            Rope::insert_recursive(root, index, text)
+            Self::insert_recursive(root, index, text)
         };
 
         self.root = Some(new_root);
@@ -356,53 +361,6 @@ impl Rope {
         if old_lines != new_lines {
             self.rebalance();
         }
-    }
-
-    /// Updates the tree structure after an insertion that involves newlines.
-    /// Rebuilds the affected portion of the tree to maintain balance.
-    /// 
-    /// # Arguments
-    /// * `text` - The original text
-    /// * `index` - The insertion point
-    /// * `insert_text` - The text being inserted
-    /// 
-    /// # Returns
-    /// The root node of the updated tree
-    fn update_balanced_tree(text: &str, index: usize, insert_text: &str) -> Rc<RefCell<RopeNode>> {
-        // Combine the text before and after the insertion point
-        let mut combined = String::with_capacity(text.len() + insert_text.len());
-        combined.push_str(&text[..index]);
-        combined.push_str(insert_text);
-        combined.push_str(&text[index..]);
-
-        // Split into lines and create leaf nodes
-        let mut nodes = Vec::new();
-        let mut current_line = String::new();
-
-        for c in combined.chars() {
-            if c == '\n' {
-                if !current_line.is_empty() {
-                    nodes.push(Rc::new(RefCell::new(RopeNode::Leaf { text: current_line })));
-                    current_line = String::new();
-                }
-                nodes.push(Rc::new(RefCell::new(RopeNode::Leaf { text: "\n".to_string() })));
-            } else {
-                current_line.push(c);
-            }
-        }
-
-        // Add the last line if it's not empty
-        if !current_line.is_empty() {
-            nodes.push(Rc::new(RefCell::new(RopeNode::Leaf { text: current_line })));
-        }
-
-        // If no nodes were added, add an empty leaf
-        if nodes.is_empty() {
-            nodes.push(Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() })));
-        }
-
-        // Build and return the balanced tree
-        Rope::build_balanced_tree_from_nodes(nodes)
     }
 
     /// Recursively inserts text at the specified index.
@@ -439,14 +397,14 @@ impl Rope {
             }
             RopeNode::Internal { left_size, left, right } => {
                 if index <= *left_size {
-                    let new_left = Rope::insert_recursive(left.clone(), index, text);
+                    let new_left = Self::insert_recursive(left.clone(), index, text);
                     Rc::new(RefCell::new(RopeNode::Internal {
                         left_size: left_size + text.chars().count(),
                         left: new_left,
                         right: right.clone(),
                     }))
                 } else {
-                    let new_right = Rope::insert_recursive(right.clone(), index - left_size, text);
+                    let new_right = Self::insert_recursive(right.clone(), index - left_size, text);
                     Rc::new(RefCell::new(RopeNode::Internal {
                         left_size: *left_size,
                         left: left.clone(),
@@ -455,6 +413,174 @@ impl Rope {
                 }
             }
         }
+    }
+
+    /// Removes a range of characters from the text without recording an undo action.
+    /// This is used internally by the undo system.
+    /// 
+    /// # Arguments
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
+    pub(crate) fn remove_without_undo(&mut self, start: usize, end: usize) {
+        if start >= end {
+            return;
+        }
+
+        let old_lines = self.lines();
+        let root = self.root.take().unwrap_or_else(|| {
+            Rc::new(RefCell::new(RopeNode::Leaf {
+                text: String::new(),
+            }))
+        });
+
+        let new_root = if root.borrow().text_range(start, end).contains('\n') {
+            // Get the text before and after the removal range
+            let before = root.borrow().text_range(0, start);
+            let after = root.borrow().text_range(end, root.borrow().char_size());
+
+            // Combine the text
+            let mut combined = before;
+            combined.push_str(&after);
+
+            // Split into lines and create a new tree
+            let mut nodes = Rope::split_text_into_lines(&combined);
+            if nodes.len() == 1 {
+                nodes.pop().unwrap()
+            } else {
+                let mut current = nodes.pop().unwrap();
+                while let Some(node) = nodes.pop() {
+                    let left_size = node.borrow().char_size();
+                    current = Rc::new(RefCell::new(RopeNode::Internal {
+                        left_size,
+                        left: node,
+                        right: current,
+                    }));
+                }
+                current
+            }
+        } else {
+            Self::remove_recursive(root, start, end)
+        };
+
+        self.root = Some(new_root);
+        let new_lines = self.lines();
+        if old_lines != new_lines {
+            self.rebalance();
+        }
+    }
+
+    /// Recursively removes a range of characters from the text.
+    /// Handles both simple removals and those involving newlines.
+    /// 
+    /// # Arguments
+    /// * `root` - The root node to remove from
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
+    /// 
+    /// # Returns
+    /// The new root node after removal
+    fn remove_recursive(root: Rc<RefCell<RopeNode>>, start: usize, end: usize) -> Rc<RefCell<RopeNode>> {
+        match &*root.borrow() {
+            RopeNode::Leaf { text } => {
+                let mut new_text = text[..start].to_string();
+                new_text.push_str(&text[end..]);
+                if new_text.is_empty() {
+                    Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() }))
+                } else {
+                    // Split the text into lines and create a new node for each line
+                    let nodes = Rope::split_text_into_lines(&new_text);
+                    Rope::build_balanced_tree(&nodes)
+                }
+            }
+            RopeNode::Internal { left_size, left, right } => {
+                if end <= *left_size {
+                    let new_left = Self::remove_recursive(left.clone(), start, end);
+                    if new_left.borrow().char_size() == 0 {
+                        right.clone()
+                    } else {
+                        Rc::new(RefCell::new(RopeNode::Internal {
+                            left_size: left_size - (end - start),
+                            left: new_left,
+                            right: right.clone(),
+                        }))
+                    }
+                } else if start >= *left_size {
+                    let new_right = Self::remove_recursive(right.clone(), start - left_size, end - left_size);
+                    if new_right.borrow().char_size() == 0 {
+                        left.clone()
+                    } else {
+                        Rc::new(RefCell::new(RopeNode::Internal {
+                            left_size: *left_size,
+                            left: left.clone(),
+                            right: new_right,
+                        }))
+                    }
+                } else {
+                    let new_left = Self::remove_recursive(left.clone(), start, *left_size);
+                    let new_right = Self::remove_recursive(right.clone(), 0, end - left_size);
+                    if new_left.borrow().char_size() == 0 {
+                        new_right
+                    } else if new_right.borrow().char_size() == 0 {
+                        new_left
+                    } else {
+                        // Get the text from both nodes and combine them
+                        let left_text = new_left.borrow().text_range(0, new_left.borrow().char_size());
+                        let right_text = new_right.borrow().text_range(0, new_right.borrow().char_size());
+                        let mut combined = left_text;
+                        combined.push_str(&right_text);
+
+                        // Split into lines and create a new tree
+                        let nodes = Rope::split_text_into_lines(&combined);
+                        Rope::build_balanced_tree(&nodes)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Inserts text at the specified character index.
+    /// If the text contains newlines, the tree is rebuilt to maintain
+    /// the line-based structure.
+    /// 
+    /// # Arguments
+    /// * `index` - The character position to insert at
+    /// * `text` - The text to insert
+    pub fn insert(&mut self, index: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        // Record the action for undo
+        self.undo_stack.push(UndoAction::Insert {
+            index,
+            text: text.to_string(),
+        });
+
+        self.insert_without_undo(index, text);
+    }
+
+    /// Removes a range of characters from the text.
+    /// If the range contains newlines, rebuilds the affected portion
+    /// of the tree.
+    /// 
+    /// # Arguments
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
+    pub fn remove(&mut self, start: usize, end: usize) {
+        if start >= end {
+            return;
+        }
+
+        // Get the text that will be deleted before removing it
+        let deleted_text = self.text_range(start, end);
+
+        // Record the action for undo
+        self.undo_stack.push(UndoAction::Delete {
+            index: start,
+            text: deleted_text,
+        });
+
+        self.remove_without_undo(start, end);
     }
 
     /// Debug helper to print the entire tree structure.
@@ -504,130 +630,6 @@ impl Rope {
         result
     }
 
-    /// Removes a range of characters from the text.
-    /// If the range contains newlines, rebuilds the affected portion
-    /// of the tree.
-    /// 
-    /// # Arguments
-    /// * `start` - Starting index (inclusive)
-    /// * `end` - Ending index (exclusive)
-    pub fn remove(&mut self, start: usize, end: usize) {
-        if start >= end {
-            return;
-        }
-
-        let old_lines = self.lines();
-        let root = self.root.take().unwrap_or_else(|| {
-            Rc::new(RefCell::new(RopeNode::Leaf {
-                text: String::new(),
-            }))
-        });
-
-        let new_root = if root.borrow().text_range(start, end).contains('\n') {
-            // Get the text before and after the removal range
-            let before = root.borrow().text_range(0, start);
-            let after = root.borrow().text_range(end, root.borrow().char_size());
-
-            // Combine the text
-            let mut combined = before;
-            combined.push_str(&after);
-
-            // Split into lines and create a new tree
-            let mut nodes = Rope::split_text_into_lines(&combined);
-            if nodes.len() == 1 {
-                nodes.pop().unwrap()
-            } else {
-                let mut current = nodes.pop().unwrap();
-                while let Some(node) = nodes.pop() {
-                    let left_size = node.borrow().char_size();
-                    current = Rc::new(RefCell::new(RopeNode::Internal {
-                        left_size,
-                        left: node,
-                        right: current,
-                    }));
-                }
-                current
-            }
-        } else {
-            Rope::remove_recursive(root, start, end)
-        };
-
-        self.root = Some(new_root);
-        let new_lines = self.lines();
-        if old_lines != new_lines {
-            self.rebalance();
-        }
-    }
-
-    /// Recursively removes a range of characters from the text.
-    /// Handles both simple removals and those involving newlines.
-    /// 
-    /// # Arguments
-    /// * `root` - The root node to remove from
-    /// * `start` - Starting index (inclusive)
-    /// * `end` - Ending index (exclusive)
-    /// 
-    /// # Returns
-    /// The new root node after removal
-    fn remove_recursive(root: Rc<RefCell<RopeNode>>, start: usize, end: usize) -> Rc<RefCell<RopeNode>> {
-        match &*root.borrow() {
-            RopeNode::Leaf { text } => {
-                let mut new_text = text[..start].to_string();
-                new_text.push_str(&text[end..]);
-                if new_text.is_empty() {
-                    Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() }))
-                } else {
-                    // Split the text into lines and create a new node for each line
-                    let nodes = Rope::split_text_into_lines(&new_text);
-                    Rope::build_balanced_tree(&nodes)
-                }
-            }
-            RopeNode::Internal { left_size, left, right } => {
-                if end <= *left_size {
-                    let new_left = Rope::remove_recursive(left.clone(), start, end);
-                    if new_left.borrow().char_size() == 0 {
-                        right.clone()
-                    } else {
-                        Rc::new(RefCell::new(RopeNode::Internal {
-                            left_size: left_size - (end - start),
-                            left: new_left,
-                            right: right.clone(),
-                        }))
-                    }
-                } else if start >= *left_size {
-                    let new_right = Rope::remove_recursive(right.clone(), start - left_size, end - left_size);
-                    if new_right.borrow().char_size() == 0 {
-                        left.clone()
-                    } else {
-                        Rc::new(RefCell::new(RopeNode::Internal {
-                            left_size: *left_size,
-                            left: left.clone(),
-                            right: new_right,
-                        }))
-                    }
-                } else {
-                    let new_left = Rope::remove_recursive(left.clone(), start, *left_size);
-                    let new_right = Rope::remove_recursive(right.clone(), 0, end - left_size);
-                    if new_left.borrow().char_size() == 0 {
-                        new_right
-                    } else if new_right.borrow().char_size() == 0 {
-                        new_left
-                    } else {
-                        // Get the text from both nodes and combine them
-                        let left_text = new_left.borrow().text_range(0, new_left.borrow().char_size());
-                        let right_text = new_right.borrow().text_range(0, new_right.borrow().char_size());
-                        let mut combined = left_text;
-                        combined.push_str(&right_text);
-
-                        // Split into lines and create a new tree
-                        let nodes = Rope::split_text_into_lines(&combined);
-                        Rope::build_balanced_tree(&nodes)
-                    }
-                }
-            }
-        }
-    }
-
     /// Rebalances the entire tree by collecting all text and
     /// rebuilding with optimal balance.
     /// Called after operations that may unbalance the tree.
@@ -650,5 +652,38 @@ impl Rope {
         // Split into lines and create a balanced tree
         let nodes = Rope::split_text_into_lines(&text);
         self.root = Some(Rope::build_balanced_tree(&nodes));
+    }
+
+    /// Returns the text content within the specified range.
+    /// 
+    /// # Arguments
+    /// * `start` - Starting index (inclusive)
+    /// * `end` - Ending index (exclusive)
+    /// 
+    /// # Returns
+    /// The text content within the specified range
+    pub fn text_range(&self, start: usize, end: usize) -> String {
+        self.root.as_ref().map_or(String::new(), |root| root.borrow().text_range(start, end))
+    }
+
+    /// Undoes the last action performed on this rope.
+    /// 
+    /// # Returns
+    /// true if an action was undone, false if there were no actions to undo
+    pub fn undo(&mut self) -> bool {
+        if let Some(action) = self.undo_stack.pop() {
+            UndoStack::apply_action(action, self);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if there are actions that can be undone.
+    /// 
+    /// # Returns
+    /// true if there are actions in the undo stack
+    pub fn can_undo(&self) -> bool {
+        self.undo_stack.can_undo()
     }
 }

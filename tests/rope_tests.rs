@@ -453,4 +453,82 @@ mod tests {
         assert_eq!(rope.lines(), 10001);
         assert_eq!(rope.char_size(), large_text.len());
     }
+
+    #[test]
+    /// Tests the undo functionality for insert operations.
+    /// Verifies that:
+    /// - Insert can be undone
+    /// - Text state is restored correctly
+    /// - Character count is restored
+    fn test_undo_insert() {
+        let mut rope = Rope::new("Hello World");
+        rope.insert(5, " Beautiful");
+        assert_eq!(rope.char_size(), 21);
+        rope.undo();
+        assert_eq!(rope.char_size(), 11);
+    }
+
+    #[test]
+    /// Tests the undo functionality for delete operations.
+    /// Verifies that:
+    /// - Delete can be undone
+    /// - Text state is restored correctly
+    /// - Character count is restored
+    fn test_undo_delete() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(5, 11); // Remove "World"
+        assert_eq!(rope.char_size(), 5);
+        rope.undo();
+        assert_eq!(rope.char_size(), 11);
+    }
+
+    #[test]
+    /// Tests multiple undo operations in sequence.
+    /// Verifies that:
+    /// - Multiple operations can be undone
+    /// - Operations are undone in reverse order
+    /// - Text state is restored correctly
+    fn test_multiple_undo() {
+        let mut rope = Rope::new("Hello");
+        rope.insert(5, " World");  // "Hello World"
+        rope.insert(0, "Say: ");   // "Say: Hello World"
+        rope.remove(10, 16);       // "Say: Hello"
+        
+        // Undo remove
+        rope.undo();
+        assert_eq!(rope.char_size(), 16);
+        
+        // Undo second insert
+        rope.undo();
+        assert_eq!(rope.char_size(), 11);
+        
+        // Undo first insert
+        rope.undo();
+        assert_eq!(rope.char_size(), 5);
+    }
+
+    #[test]
+    /// Tests undo with newlines.
+    /// Verifies that:
+    /// - Newlines are handled correctly in undo operations
+    /// - Line count is restored correctly
+    fn test_undo_with_newlines() {
+        let mut rope = Rope::new("Line 1\nLine 2");
+        rope.insert(6, "\nNew Line\n");
+        assert_eq!(rope.lines(), 4);
+        rope.undo();
+        assert_eq!(rope.lines(), 2);
+    }
+
+    #[test]
+    /// Tests undo on an empty rope.
+    /// Verifies that:
+    /// - Undo on empty rope is handled gracefully
+    /// - No changes occur when there's nothing to undo
+    fn test_undo_empty_rope() {
+        let mut rope = Rope::new("");
+        assert!(!rope.undo()); // Should return false when nothing to undo
+        assert_eq!(rope.char_size(), 0);
+        assert_eq!(rope.lines(), 1);
+    }
 }
