@@ -141,11 +141,7 @@ mod tests {
     #[test]
     fn test_insert_newline_leaf_structure() {
         let mut rope = Rope::new("Hello World");
-        rope.print_structure();
-        println!("After initial creation");
         rope.insert(5, "\n");
-        rope.print_structure();
-        println!("After inserting newline");
         assert_eq!(rope.lines(), 2);
         assert_eq!(rope.leaf_count(), 2); // Should have one Leaf per line
     }
@@ -153,11 +149,7 @@ mod tests {
     #[test]
     fn test_insert_multiple_newlines_leaf_structure() {
         let mut rope = Rope::new("Line 1\nLine 2");
-        println!("Initial structure:");
-        rope.print_structure();
         rope.insert(6, "New Line\n");
-        println!("\nAfter inserting 'New Line\\n':");
-        rope.print_structure();
         assert_eq!(rope.lines(), 3);
         assert_eq!(rope.leaf_count(), 3); // Should have one Leaf per line
     }
@@ -165,11 +157,8 @@ mod tests {
     #[test]
     fn test_insert_large_text_leaf_structure() {
         let mut rope = Rope::new("Start\nEnd");
-        println!("Initial structure:");
-        rope.print_structure();
         let large_text = "Middle\n".repeat(100);
         rope.insert(6, &large_text);
-        println!("\nAfter inserting large text:");
         rope.print_structure();
         assert_eq!(rope.lines(), 102);
         assert_eq!(rope.leaf_count(), 102); // Should have one Leaf per line
@@ -178,11 +167,7 @@ mod tests {
     #[test]
     fn test_insert_empty_lines_leaf_structure() {
         let mut rope = Rope::new("Hello");
-        println!("Initial structure:");
-        rope.print_structure();
         rope.insert(5, "\n\n\n");
-        println!("\nAfter inserting '\\n\\n\\n':");
-        rope.print_structure();
         assert_eq!(rope.lines(), 4);
         assert_eq!(rope.leaf_count(), 4); // Should have one Leaf per line, including empty lines
     }
@@ -190,12 +175,109 @@ mod tests {
     #[test]
     fn test_insert_at_line_boundaries_leaf_structure() {
         let mut rope = Rope::new("Line 1\nLine 2\nLine 3");
-        println!("Initial structure:");
-        rope.print_structure();
         rope.insert(6, "New\n");
-        println!("\nAfter inserting 'New\\n':");
-        rope.print_structure();
         assert_eq!(rope.lines(), 4);
         assert_eq!(rope.leaf_count(), 4); // Should have one Leaf per line
+    }
+
+    #[test]
+    fn test_remove_single_leaf() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(5, 7); // Remove " W"
+        assert_eq!(rope.char_size(), 9);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_across_leaves() {
+        let mut rope = Rope::new("Hello\nWorld");
+        rope.remove(4, 7); // Remove "o\nW"
+        assert_eq!(rope.char_size(), 8);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_newlines() {
+        let mut rope = Rope::new("Line 1\nLine 2\nLine 3");
+        rope.remove(6, 14); // Remove "\nLine 2\n" -> "Line 1Line 3"
+        assert_eq!(rope.char_size(), 12);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_empty_range() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(5, 5); // Remove nothing
+        assert_eq!(rope.char_size(), 11);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_full_range() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(0, 11); // Remove everything
+        assert_eq!(rope.char_size(), 0);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_at_start() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(0, 6); // Remove "Hello "
+        assert_eq!(rope.char_size(), 5);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_at_end() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(6, 11); // Remove "World"
+        assert_eq!(rope.char_size(), 6);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_multiple_newlines() {
+        let mut rope = Rope::new("Line 1\n\n\nLine 4");
+        rope.remove(6, 9); // Remove "\n\n\n"
+        assert_eq!(rope.char_size(), 12);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_and_insert() {
+        let mut rope = Rope::new("Hello World");
+        rope.remove(5, 7); // Remove " W"
+        rope.insert(5, " "); // Insert " " back
+        assert_eq!(rope.char_size(), 10);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_empty_rope() {
+        let mut rope = Rope::new("");
+        rope.remove(0, 0); // Remove nothing from empty rope
+        assert_eq!(rope.char_size(), 0);
+        assert_eq!(rope.lines(), 1);
+        assert_eq!(rope.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_remove_large_text() {
+        let text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8";
+        let mut rope = Rope::new(text);
+        rope.remove(12, 36); // Remove "2\nLine 3\nLine 4\nLine 5\nL" -> "Line 1\nLine ine 6\nLine 7\nLine "
+        assert_eq!(rope.char_size(), 31);
+        assert_eq!(rope.lines(), 4);
+        assert_eq!(rope.leaf_count(), 4);
     }
 }

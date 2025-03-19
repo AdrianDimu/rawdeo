@@ -36,7 +36,12 @@ impl RopeNode {
     fn lines(&self) -> usize {
         match self {
             RopeNode::Leaf { text } => {
-                text.chars().filter(|&c| c == '\n').count() + 1
+                if text.is_empty() {
+                    1
+                } else {
+                    // Count newlines and add 1 for the first line
+                    text.chars().filter(|&c| c == '\n').count() + 1
+                }
             }
             RopeNode::Internal { left, right, .. } => {
                 // Combine line counts from both children, subtracting 1 to avoid double-counting
@@ -79,30 +84,29 @@ pub struct Rope {
 impl Rope {
     // Helper function to split text into lines with newlines at the start
     fn split_text_into_lines(text: &str) -> Vec<String> {
+        if text.is_empty() {
+            return vec![String::new()];
+        }
+
         let mut lines: Vec<String> = Vec::new();
-        let mut current_line = String::new();
-        let mut chars = text.chars();
-
-        // Handle the first character separately to avoid a newline prefix
-        if let Some(c) = chars.next() {
-            current_line.push(c);
-        }
-
-        // Process the rest of the characters
-        while let Some(c) = chars.next() {
-            if c == '\n' {
-                // Push the current line without the newline
-                lines.push(current_line);
-                // Start a new line with the newline as its first character
-                current_line = String::from('\n');
-            } else {
-                current_line.push(c);
+        
+        // Split on newlines, keeping the newlines with the lines
+        let mut parts = text.split_inclusive('\n');
+        
+        // Handle the first line specially
+        if let Some(first) = parts.next() {
+            if first.starts_with('\n') {
+                lines.push(String::new()); // Empty line before newline
             }
+            lines.push(first.to_string());
         }
 
-        // Handle the last line
-        if !current_line.is_empty() {
-            lines.push(current_line);
+        // Add remaining lines
+        lines.extend(parts.map(|s| s.to_string()));
+
+        // If we have no lines, add an empty line
+        if lines.is_empty() {
+            lines.push(String::new());
         }
 
         lines
@@ -264,5 +268,142 @@ impl Rope {
     // Returns the number of leaf nodes in the tree
     pub fn leaf_count(&self) -> usize {
         self.root.borrow().leaf_count()
+    }
+
+    // Helper function to join text from two nodes, handling newlines correctly
+    fn join_text(left: &str, right: &str) -> String {
+        // If either text is empty, return the other one
+        if left.is_empty() {
+            return right.to_string();
+        }
+        if right.is_empty() {
+            return left.to_string();
+        }
+
+        let mut result = String::with_capacity(left.len() + right.len());
+        
+        // If both sides have a newline at the boundary, remove one of them
+        if left.ends_with('\n') && right.starts_with('\n') {
+            result.push_str(&left[..left.len()-1]);
+            result.push_str(right);
+        } else {
+            result.push_str(left);
+            result.push_str(right);
+        }
+        
+        result
+    }
+
+    // Removes a range of characters from the text
+    // start: inclusive start index
+    // end: exclusive end index
+    pub fn remove(&mut self, start: usize, end: usize) {
+        if start == end {
+            return;
+        }
+
+        let root = self.root.clone();
+        let new_root = Rope::remove_recursive(root, start, end);
+        
+        // Collect text and rebuild the tree
+        let mut text = String::new();
+        let mut stack = vec![new_root];
+        while let Some(node) = stack.pop() {
+            match &*node.borrow() {
+                RopeNode::Leaf { text: leaf_text } => {
+                    text.push_str(leaf_text);
+                }
+                RopeNode::Internal { left, right, .. } => {
+                    stack.push(right.clone());
+                    stack.push(left.clone());
+                }
+            }
+        }
+
+        // Create a new rope from the collected text
+        self.root = Rope::new(&text).root;
+    }
+
+    // Recursively removes a range of characters from the text
+    // Returns a new tree with the specified range removed
+    fn remove_recursive(root: Rc<RefCell<RopeNode>>, start: usize, end: usize) -> Rc<RefCell<RopeNode>> {
+        if start == end {
+            return root;
+        }
+
+        match &*root.borrow() {
+            RopeNode::Leaf { text } => {
+                // For leaf nodes, create a new string with the range removed
+                let mut new_text = String::with_capacity(text.len() - (end - start));
+                new_text.push_str(&text[..start]);
+                new_text.push_str(&text[end..]);
+
+                // If the resulting text is empty and we're not the only node,
+                // we should return an empty node
+                if new_text.is_empty() {
+                    return Rc::new(RefCell::new(RopeNode::Leaf { text: String::new() }));
+                }
+
+                // Create a new leaf node with the modified text
+                Rc::new(RefCell::new(RopeNode::Leaf { text: new_text }))
+            }
+            RopeNode::Internal { left, right, left_size } => {
+                if end <= *left_size {
+                    // Range is entirely in the left subtree
+                    let new_left = Rope::remove_recursive(left.clone(), start, end);
+                    let new_left_size = new_left.borrow().char_size();
+                    Rc::new(RefCell::new(RopeNode::Internal {
+                        left: new_left,
+                        right: right.clone(),
+                        left_size: new_left_size,
+                    }))
+                } else if start >= *left_size {
+                    // Range is entirely in the right subtree
+                    let new_right = Rope::remove_recursive(right.clone(), start - left_size, end - left_size);
+                    Rc::new(RefCell::new(RopeNode::Internal {
+                        left: left.clone(),
+                        right: new_right,
+                        left_size: *left_size,
+                    }))
+                } else {
+                    // Range spans both subtrees
+                    // Remove the end portion from the left subtree
+                    let new_left = Rope::remove_recursive(left.clone(), start, *left_size);
+                    // Remove the start portion from the right subtree
+                    let new_right = Rope::remove_recursive(right.clone(), 0, end - left_size);
+                    
+                    // If either subtree is empty after removal, return the other one
+                    if new_left.borrow().char_size() == 0 {
+                        return new_right;
+                    }
+                    if new_right.borrow().char_size() == 0 {
+                        return new_left;
+                    }
+
+                    // Try to get text from both nodes
+                    let mut combined_text = None;
+                    {
+                        let left_node = new_left.borrow();
+                        let right_node = new_right.borrow();
+                        if let (RopeNode::Leaf { text: left_text }, RopeNode::Leaf { text: right_text }) = (&*left_node, &*right_node) {
+                            combined_text = Some(Rope::join_text(left_text, right_text));
+                        }
+                    }
+
+                    if let Some(combined) = combined_text {
+                        // Create a new leaf node with the combined text
+                        Rc::new(RefCell::new(RopeNode::Leaf { text: combined }))
+                    } else {
+                        // Not both leaves, combine as internal node
+                        let new_left_size = new_left.borrow().char_size();
+                        Rc::new(RefCell::new(RopeNode::Internal {
+                            left: new_left,
+                            right: new_right,
+                            left_size: new_left_size,
+                        }))
+                    }
+                }
+            }
+        }
     }
 }
