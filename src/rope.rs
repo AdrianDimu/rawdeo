@@ -119,7 +119,7 @@ impl RopeNode {
     fn text_range(&self, start: usize, end: usize) -> String {
         match self {
             RopeNode::Leaf { text } => {
-                if start >= text.chars().count() || end > text.chars().count() || start > end {
+                if start >= text.chars().count() || end > text.chars().count() || start > end || end == 0 {
                     String::new()
                 } else {
                     // Convert byte indices to char indices
@@ -128,9 +128,13 @@ impl RopeNode {
                         .clone()
                         .nth(start)
                         .map_or(text.len(), |(i, _)| i);
-                    let end_byte = char_indices
-                        .nth(end - 1)
-                        .map_or(text.len(), |(i, c)| i + c.len_utf8());
+                    let end_byte = if end == 0 {
+                        0
+                    } else {
+                        char_indices
+                            .nth(end - 1)
+                            .map_or(text.len(), |(i, c)| i + c.len_utf8())
+                    };
                     text[start_byte..end_byte].to_string()
                 }
             }
